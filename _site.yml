@@ -15,7 +15,7 @@ navbar:
       menu:
         - text: "Heading 1"
         - text: "Page A"
-          href: page_a.html
+          href: ./LPSOLVE_in_Python/README.md
         - text: "Page B"
           href: page_b.html
         - text: "---------"
