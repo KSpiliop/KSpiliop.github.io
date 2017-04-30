@@ -1,0 +1,391 @@
+---
+title: "Credit Risk and Macroeconomic Indicators in Bulgaria 
+"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo=FALSE)
+
+```
+
+```{r, echo=FALSE}
+
+## install libraries if missing
+list.of.packages <- c('ggplot2','WDI','eurostat','reshape2',
+                      'forecast','car','ggfortify','scales','lubridate',
+                      'imputeTS')
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+rm(list=ls())
+
+library(WDI)
+library(ggplot2)
+library(eurostat)
+library(reshape2)
+library(forecast)
+library(car)
+library(ggfortify)
+library(scales)
+library(lubridate)
+library(imputeTS)
+
+setwd('C:/Users/Kimon/Documents/Dennis/IFRS9/Statistics')
+
+graph <- function(df,ylab,title) {
+  p1 <- ggplot(data=df, aes(x=df[,1], y=df[,2])) +
+    scale_x_date(labels = date_format("%Y"), date_breaks='1 year') +
+    geom_line(colour="blue", size=0.75) + 
+    xlab('Year') + ylab(ylab) +
+    theme(axis.text=element_text(size=10,face="bold",angle=90,hjust=1),
+          axis.title=element_text(size=12,face="bold"),
+          title=element_text(size=14,face="bold"))+
+    ggtitle(title) 
+
+  p2 <- ggplot(data=df, aes(x=df[,1], y=df[,3])) +
+    scale_x_date(labels = date_format("%Y"), date_breaks='1 year') +
+    geom_line(colour="blue", size=0.75) + 
+    xlab('Year') + ylab(ylab) +
+    theme(axis.text=element_text(size=10,face="bold",angle=90,hjust=1),
+          axis.title=element_text(size=12,face="bold"),
+          title=element_text(size=14,face="bold"))+
+    ggtitle(title) 
+  return(list(p1=p1,p2=p2))
+}
+
+compute_change <- function(df) {
+  for(i in 1:(nrow(df)-1)) {
+    y1 <- df[i,2]
+    y2 <- df[i+1,2]
+    change <- 100*(y2-y1)/y1
+    df[i+1,3] <- change
+  }
+  return(df)
+}
+
+process <- function(df,period,index,xlabel,title) {
+
+  ord <- order(df$time)
+  df <- df[ord,]
+  df <- df[complete.cases(df),]
+  df <- df[,c('time','values')]
+  start_time <- df$time[1]
+  start_year <- year(start_time)
+  start_month <- month(start_time)
+  end_time <- df$time[nrow(df)]
+  end_year <- year(end_time)
+  end_month <- month(end_time)
+  if(period=='q') { ## last is yyyy-10-01: extend to end of year
+    all <- seq(start_time, as.Date(paste(end_year,'-12-01',sep='')), 
+               by =  "month")
+  } else if(period=='m') { ## last is yyyy-12-01: keep as is 
+    all <- seq(start_time, end_time, by =  "month")
+  } else if(period=='y') { ## last is yyyy-01-01: : extend to end of year
+    all <- seq(start_time, as.Date(paste(end_year,'-12-01',sep='')), 
+               by =  "month")
+  }
+  
+  df2 <- data.frame(time=all)
+  df2 <- merge(df,df2,all=TRUE)
+  
+  df2$values <- ts(df2$values,start=c(start_year,1),end=c(end_year,12),
+                   frequency=12)
+  df2$values <- na.interpolation(df2$values, option = "linear")
+
+  df2 <- compute_change(df2)
+  df2$V3 <- ts(df2$V3,start=c(start_year,1),end=c(end_year,12),frequency=12)
+
+  names(df2)<-c('time',index,paste(index,'_change',sep=''))
+
+  plots <- graph (df2,xlabel,title)
+  print(plots$p1)
+  print(plots$p2)
+
+  return(list(df2=df2,p1=plots$p1,p2=plots$p2))
+}
+
+```
+
+
+### Gross domestic product at market prices
+### Price index (implicit deflator), 2010=100, Euro
+### Seasonally and calendar adjusted data	
+### Quarterly data
+### 2000Q1 - 2016Q4
+
+
+```{r, echo=TRUE}
+
+gdp <- get_eurostat(id='namq_10_gdp',time_format = 'date',update_cache=TRUE,
+                    filters= list(geo='BG',unit='PD10_EUR',s_adj='SCA',na_item='B1GQ'))
+
+ll <- process(gdp,'q','GDP','Monthly Price index, 2010=100','GDP at market prices - Seasonally and calendar adjusted data') 
+gdp2 <- ll$df2
+
+
+```
+
+### Nonperforming to total gross loans
+### Yearly data
+### 2000 - 2015
+### World Bank Database
+### http://data.worldbank.org/indicator/FB.AST.NPER.ZS?locations=BG
+
+
+```{r, echo=TRUE}
+
+npl <- WDI(country = c('BG'), indicator = "FB.AST.NPER.ZS",
+start = 2000, end = 2015, extra = TRUE, cache = NULL)
+
+npl <- npl[,c('year','FB.AST.NPER.ZS')] 
+names(npl) <- c('time','values')
+npl$time <- as.Date(paste(as.character(npl$time),'-01-01',sep=''))
+
+ll <- process(npl,'y','NPL','% of gross loans','Non-performing loans')
+npl2 <- ll$df2
+
+
+dat <- merge(gdp2,npl2,by=c('time'),all = TRUE)
+write.csv(dat,file='data.csv')
+
+```
+
+
+
+
+### Total unemployment rate: % of the active population 15-74 
+### Quarterly data
+### 2000Q1 - 2016Q4
+
+
+```{r, echo=TRUE}
+
+
+## Total unemployment rate: % of the active population
+## LFS adjusted series
+
+unempl <- get_eurostat(id='lfsq_urgan',time_format = 'date',update_cache=TRUE,
+                    filters= list(age='Y15-74', citizen='TOTAL',sex='T', geo='BG'))
+
+
+ll <- process(unempl,'q','Unempl','% of the active population','Total unemployment rate')
+unempl2 <- ll$df2
+
+dat <- merge(dat,unempl2,by=c('time'),all = TRUE)
+write.csv(dat,file='data.csv')
+
+```
+
+
+### House price index (2010 = 100) - quarterly data
+### Total purchases
+### Quarterly data
+### 2005Q1 - 2016Q4
+
+
+```{r, echo=TRUE}
+hpi <- get_eurostat(id='prc_hpi_q',time_format = 'date',update_cache=TRUE,
+                    filters= list(unit='INX_Q', typpurch='TOTAL',geo='BG'))
+
+ll <- process(hpi,'q','HPI','Index (2010 = 100)','House price index')
+hpi2 <- ll$df2
+
+dat <- merge(dat,hpi2,by=c('time'),all = TRUE)
+write.csv(dat,file='data.csv')
+
+```
+
+### From the World Bank Database:
+### Inflation, consumer prices (annual %)
+### Yearly data
+### 2000-2015
+### http://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=BG
+
+
+```{r, echo=TRUE}
+
+
+inflat <- WDI(country = c('BG'), indicator = "FP.CPI.TOTL.ZG",
+start = 2000, end = 2015, extra = TRUE, cache = NULL)
+inflat <- inflat[,c('year','FP.CPI.TOTL.ZG')] ; 
+names(inflat) <- c('time','values')
+
+inflat$time <- as.Date(paste(as.character(inflat$time),'-01-01',sep=''))
+
+
+ll <- process(inflat,'y','Inflation','Inflation','Inflation')
+inflat2 <- ll$df2
+
+
+dat <- merge(dat,inflat2,by=c('time'),all = TRUE)
+write.csv(dat,file='data.csv')
+
+```
+## EMU convergence criterion bond yields - monthly data
+## calculating Greek-German 10-year bond spread
+
+```{r, echo=TRUE}
+bonds <- get_eurostat(id='irt_lt_mcby_m',time_format = 'date',update_cache=TRUE)
+bonds <- bonds[bonds$geo=='EL' | bonds$geo=='DE',]
+bonds <- bonds[year(bonds$time) >= 2000,]
+bonds <- dcast(bonds, time ~ geo, value.var = 'values')
+bonds$values <- bonds$EL-bonds$DE
+bonds <- bonds[,c('time','values')]
+
+bonds$values <- ts(bonds$values,start=c(2000,1),end=c(2017,3),
+                   frequency=12)
+
+bonds$values <- na.interpolation(bonds$values, option = "linear")
+
+bonds2 <- compute_change(bonds)
+bonds2$V3 <- ts(bonds2$V3,start=c(2000,1),end=c(2017,3),frequency=12)
+
+names(bonds2)<-c('time','Bonds','Bonds_change')
+
+plots <- graph (bonds2,'bonds','bonds')
+plots$p1
+plots$p2
+rm(bonds)
+
+dat <- merge(dat,bonds2,by=c('time'),all = TRUE)
+write.csv(dat,file='data.csv')
+
+```
+
+
+## average bank interest rates
+
+##http://sdw.ecb.europa.eu/browseSelection.do?df=true&ec=&dc=&oc=&pb=&rc=&DATASE##T=0&removeItem=&activeTab=&REF_AREA=67&BS_ITEM=A20&BS_ITEM=A20&MATURITY_NOT_IR##ATE=&node=1513
+
+```{r, echo=TRUE}
+inter <- read.csv(file='interest_rates.csv',skip = 4,header=TRUE,
+                  stringsAsFactors = FALSE)
+names(inter) <- c('time','rate1','rate2','rate3')
+
+inter$rate <- rowMeans(inter[,2:4])
+
+inter$year <- as.numeric(substr(inter$time,1,4))
+inter$month <- substr(inter$time,5,length(inter$time))
+
+inter$time2 <- paste(inter$year,inter$month,'01',sep='-')
+inter$time3 <- as.Date(inter$time2,format='%Y-%b-%d')
+
+inter <- inter[, c('time3','rate')]
+names(inter) <- c('time','values')
+
+ord <- order(inter$time)
+inter <- inter[ord,]
+
+inter$values <- ts(inter$values,start=c(2007,1),end=c(2017,2),
+                   frequency=12)
+
+inter2 <- compute_change(inter)
+inter2$V3 <- ts(inter2$V3,start=c(2007,1),end=c(2017,2),frequency=12)
+
+names(inter2)<-c('time','Inter','Inter_change')
+
+plots <- graph (inter2,'inter2','inter2')
+plots$p1
+plots$p2
+rm(inter)
+
+dat <- merge(dat,inter2,by=c('time'),all = TRUE)
+write.csv(dat,file='data.csv')
+
+
+```
+```{r, echo=TRUE}
+for(j in 2:ncol(dat) )
+  dat[,j] <- ts(dat[,j], start=c(2000,1), end=c(2017,3), frequency = 12)
+
+model0 <- lm(NPL ~ . -time -NPL_change, data=dat)
+summary(model0)
+
+
+```
+model0 <- tslm(non_perf_loans ~ ., data=dat)
+
+
+
+
+summary(model0)
+vif(model0)
+dat8$preds0 <- predict(model0,data=dat8)
+
+autoplot(cbind(Actual=dat8$non_perf_loans, Predicted=dat8$preds0), ts.linetype = 'solid',ylab='% Non-performing loans',ts.size=1)
+
+
+
+ggplot(dat8, aes(x = non_perf_loans, y = preds0)) + 
+    #geom_line(colour="blue", size=0.75) + 
+    scale_x_continuous(breaks=seq(5,25,5))+
+    scale_y_continuous(breaks=seq(5,25,5))+
+    geom_point()  +
+    geom_abline(intercept = 0, slope = 1, color='blue')+
+    xlab('Non-performing loans ratio (actual)') + 
+    ylab('Non-performing loans ratio (predicted)') 
+    #facet_wrap(~ variable, scales = 'free_y', ncol = 1)
+
+plot(model0)
+
+```
+
+We then tested each predictor separately. The p-values showed significant associations of the unemployment rate, inflation rate and the Greek-German bonds spread.
+```{r, eval=FALSE, echo=FALSE}
+
+for( j in 2:7) {
+  cat('\npredictor: ',names(dat8)[j],'\n')
+  model <- tslm(non_perf_loans ~ dat8[,j], data=dat8)
+  print(summary(model)$coefficients[2,4])
+  stat <- cor.test(dat8$non_perf_loans,dat8[,j])
+  print(stat$p.value)
+}
+```
+
+After some tests, we also excluded the unemployment rate and concluded with a model with two predictors, inflation rate, the Greek-German bonds spread and the average bank interest rate. This model has a quite good fit (adjusted R2 = 0.84) and diagnostics, as presented below.  
+
+```{r, eval=FALSE, echo=FALSE}
+
+model1 <- tslm(non_perf_loans ~ Inflation + int_rate
+                 + spread, data=dat8)
+summary(model1)
+vif(model1)
+dat8$preds1 <- predict(model1,data=dat8)
+spreadLevelPlot(model)
+
+plot(model1)
+
+
+ggplot(dat8, aes(x = non_perf_loans, y = preds1)) + 
+    #geom_line(colour="blue", size=0.75) + 
+    scale_x_continuous(breaks=seq(5,25,5))+
+    scale_y_continuous(breaks=seq(5,25,5))+
+    geom_point()  +
+    geom_abline(intercept = 0, slope = 1, color='blue')+
+    xlab('Non-performing loans ratio (actual)') + 
+    ylab('Non-performing loans ratio (predicted)') 
+    #facet_wrap(~ variable, scales = 'free_y', ncol = 1)
+
+autoplot(cbind(Actual=dat8$non_perf_loans, Predicted=dat8$preds1), ts.linetype = 'solid',ylab='% Non-performing loans',ts.size=1)
+
+
+```
+
+## References
+***
+
+Jakubík, Petr, and Thomas Reininger. What are the key determinants of nonperforming loans in CESEE?. No. 26/2014. IES Working Paper, 2014. 
+
+Vogiazas, Sofoklis D., and Eftychia Nikolaidou. "Investigating the determinants of nonperforming loans in the Romanian banking system: An empirical study with reference to the Greek crisis." Economics Research International 2011 (2011).
+
+CIA/ The World FactBook  
+https://www.cia.gov/library/publications/the-world-factbook/geos/bu.html
+
+## TO CHECK:
+*** 
+https://www.eba.europa.eu/documents/10180/1018121/Jakubik,%20Reininger+-+What+are+the+Key+Determinants+of+Nonperforming+Loans+in+CESEE+-+Paper.pdf
+
+https://www.hindawi.com/journals/ecri/2011/214689/
+
+http://ec.europa.eu/europe2020/pdf/csr2015/cr2015_bulgaria_en.pdf
