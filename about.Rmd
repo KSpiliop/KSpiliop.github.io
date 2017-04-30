@@ -1,6 +1,6 @@
 ---
 title: "About This Website"
-author: "Kimon"
+author: "Kimon Spiliopoulos"
 date: "April 30, 2017"
 output: html_document
 ---
