@@ -1,7 +1,8 @@
 ---
-title: "Credit Risk and Macroeconomic Indicators in Bulgaria 
-"
-output: word_document
+title: 'Credit Risk and Macroeconomic Indicators in Bulgaria '
+output:
+  html_document: default
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -31,7 +32,7 @@ library(scales)
 library(lubridate)
 library(imputeTS)
 
-setwd('C:/Users/Kimon/Documents/Dennis/IFRS9/Statistics')
+##setwd('C:/Users/Kimon/Documents/Dennis/IFRS9/Statistics')
 
 graph <- function(df,ylab,title) {
   p1 <- ggplot(data=df, aes(x=df[,1], y=df[,2])) +
@@ -375,7 +376,7 @@ autoplot(cbind(Actual=dat8$non_perf_loans, Predicted=dat8$preds1), ts.linetype =
 ## References
 ***
 
-Jakubík, Petr, and Thomas Reininger. What are the key determinants of nonperforming loans in CESEE?. No. 26/2014. IES Working Paper, 2014. 
+Jakub?k, Petr, and Thomas Reininger. What are the key determinants of nonperforming loans in CESEE?. No. 26/2014. IES Working Paper, 2014. 
 
 Vogiazas, Sofoklis D., and Eftychia Nikolaidou. "Investigating the determinants of nonperforming loans in the Romanian banking system: An empirical study with reference to the Greek crisis." Economics Research International 2011 (2011).
 

@@ -15,7 +15,7 @@ navbar:
       menu:
         - text: "Heading 1"
         - text: "Page A"
-          href: ./LPSOLVE_in_Python/README.md
+          href: ./Bulgaria/Bulgaria_v3.html
         - text: "Page B"
           href: page_b.html
         - text: "---------"
